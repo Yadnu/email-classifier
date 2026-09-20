@@ -1,0 +1,44 @@
+# ── secrets & local data ──────────────────────────────────
+data/
+.env
+
+# ── Python ────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── virtual environments ──────────────────────────────────
+.venv/
+venv/
+env/
+.virtualenv/
+
+# ── uv ────────────────────────────────────────────────────
+.uv/
+
+# ── pytest / coverage ─────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# ── type checkers / linters ───────────────────────────────
+.mypy_cache/
+.ruff_cache/
+
+# ── editors ───────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*~
+
+# ── OS ────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db

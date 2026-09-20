@@ -1,0 +1,81 @@
+# ============================================================
+# Personal Gmail + Jev Spam Classifier — Configuration
+# ============================================================
+
+# ----------------------------------------------------------
+# Gmail / OAuth
+# ----------------------------------------------------------
+gmail:
+  # Path to the OAuth Desktop client secrets file downloaded from
+  # Google Cloud Console. Relative to the repo root.
+  credentials_path: "data/credentials.json"
+  # Persisted OAuth token (created on first auth).
+  token_path: "data/token.json"
+  # Scopes used by default for ingest and classify.
+  # gmail.modify is requested separately only by label-inbox.
+  readonly_scopes:
+    - "https://www.googleapis.com/auth/gmail.readonly"
+  modify_scopes:
+    - "https://www.googleapis.com/auth/gmail.modify"
+
+# ----------------------------------------------------------
+# Ingest
+# ----------------------------------------------------------
+ingest:
+  # SQLite database for local storage.
+  db_path: "data/classifier.db"
+  # Max messages per page from messages.list (1–500).
+  page_size: 500
+  # Max messages per Gmail batch request for messages.get RAW.
+  batch_size: 50
+  # Safety cap: stop after ingesting this many messages in a single run.
+  # Set to null to disable.
+  max_messages: null
+  # What to do with messages that have CATEGORY_PROMOTIONS but not SPAM.
+  # "ignore"       → skip these messages entirely
+  # "promotional"  → ingest, ground-truth label = promotional
+  # "ham"          → ingest, ground-truth label = ham
+  promotions_as: "promotional"
+  # Include Spam and Trash folders in ingest (recommended: true so
+  # we have ground-truth spam labels).
+  include_spam_trash: true
+
+# ----------------------------------------------------------
+# Jev / TypeSafe  (Stage 3 — values written now, used later)
+# ----------------------------------------------------------
+jev:
+  model: "jev-1.13.0"
+  # Input pricing in USD per million tokens. Output is free.
+  price_per_million_input_tokens: 0.042
+  # Body excerpt length sent to Jev (chars, ~≤1500).
+  body_excerpt_chars: 1500
+
+# ----------------------------------------------------------
+# Decision thresholds  (Stage 3 — values written now, used later)
+# ----------------------------------------------------------
+thresholds:
+  # Minimum confidence to call a Choice answer phishing by category alone.
+  phishing_category_confidence: 0.85
+  # credential_request Noul threshold contributing to phishing via signals.
+  phishing_credential_request: 0.80
+  # brand_impersonation Noul threshold contributing to phishing via signals.
+  phishing_brand_impersonation: 0.80
+  # is_spam Noul threshold to flag as spam regardless of category.
+  spam_is_spam: 0.75
+  # category spam/phishing confidence threshold to flag as spam.
+  spam_category_confidence: 0.80
+  # Minimum category confidence to apply a promotional label.
+  promotional_action: 0.60
+  # If top category confidence is below this value, verdict = "uncertain"
+  # and no label is ever applied automatically.
+  uncertain_floor: 0.50
+  # needs_reply Noul threshold to apply the Jev-Needs-Reply label.
+  needs_reply_label: 0.70
+
+# ----------------------------------------------------------
+# Stats / drift watch  (Stage 5 — values written now, used later)
+# ----------------------------------------------------------
+stats:
+  # Flag a drop in mean confidence or Gmail-agreement by more than this
+  # percentage vs the previous period.
+  drift_alert_pct: 10
