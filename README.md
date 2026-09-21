@@ -165,9 +165,9 @@ All tunable values live in [`config.yaml`](config.yaml):
 email_classifier/
 ├── auth/         OAuth Desktop flow
 ├── ingest/       Gmail pull, SQLite schema, historyId sync
-├── parse/        MIME + HTML stripping  (Stage 2)
-├── features/     Code-computed signals: SPF/DKIM, links, domain checks  (Stage 2)
-├── jev/          State builder + TypeSafeClient wrapper  (Stage 3)
+├── parse/        MIME + HTML stripping
+├── features/     Code-computed signals: SPF/DKIM, links, domain checks
+├── jev/          State builder (questions + TypeSafeClient in Stage 3)
 ├── decide/       Threshold logic, decision_path  (Stage 3)
 ├── models/       Pydantic output contract  (Stage 3)
 ├── observability/ OTel, Prometheus, structlog  (Stage 4)
