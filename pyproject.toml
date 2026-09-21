@@ -18,10 +18,10 @@ dependencies = [
     "python-dotenv>=1.0.1",
     # Stage 2: parse + HTML strip
     "beautifulsoup4>=4.12.0",
-    # Stage 3 (added when Stage 3 begins)
-    # "typesafe-sdk>=0.7.0",
-    # "fastapi>=0.115.0",
-    # "httpx>=0.27.0",
+    # Stage 3: Jev + API
+    "typesafe-sdk>=0.7.0",
+    "fastapi>=0.115.0",
+    "httpx>=0.27.0",
     # Stage 4 (added when Stage 4 begins)
     # "opentelemetry-api>=1.29.0",
     # "opentelemetry-sdk>=1.29.0",

@@ -49,9 +49,16 @@ def classify(
         typer.Option("--config", help="Path to config.yaml.", envvar="CLASSIFIER_CONFIG"),
     ] = "config.yaml",
 ) -> None:
-    """Classify a single Gmail message via Jev.  (Stage 3)"""
-    typer.echo("classify command is available in Stage 3.", err=True)
-    raise typer.Exit(1)
+    """Classify a single Gmail message via Jev."""
+    from email_classifier.models.result import format_compact
+    from email_classifier.pipeline import classify_message
+
+    cfg = load_config(config)
+    result = classify_message(message_id, cfg)
+    if json_output:
+        typer.echo(result.model_dump_json(indent=2))
+    else:
+        typer.echo(format_compact(result))
 
 
 # ─── evaluate  (Stage 5) ──────────────────────────────────────────────────────
