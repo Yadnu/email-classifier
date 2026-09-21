@@ -1,3 +1,5 @@
+import { AppNav } from "@/components/AppNav";
+import { ChromeProvider } from "@/components/ChromeProvider";
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, Newsreader } from "next/font/google";
 import "./globals.css";
@@ -19,15 +21,23 @@ export const metadata: Metadata = {
   description: "Inspect every Gmail classification, its trace, and its cost.",
 };
 
+const themeBoot = `(function(){try{var t=localStorage.getItem("classifier-theme");if(t==="light"||t==="dark"||t==="system")document.documentElement.dataset.theme=t;}catch(e){}})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBoot }} />
+      </head>
       <body className={`${serif.variable} ${mono.variable} grain min-h-screen`}>
-        {children}
+        <ChromeProvider>
+          <AppNav />
+          {children}
+        </ChromeProvider>
       </body>
     </html>
   );

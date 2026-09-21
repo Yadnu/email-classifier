@@ -131,3 +131,28 @@ class TestIterAllMessages:
         for batch in db.iter_all_messages(batch_size=2):
             collected.extend(batch)
         assert len(collected) == 5
+
+
+class TestUnclassified:
+    def _msg(self, db: Database, msg_id: str, date: int) -> None:
+        db.upsert_message(
+            msg_id,
+            "t1",
+            date,
+            "1",
+            make_raw_email(),
+            ["INBOX"],
+            "a@example.com",
+            "subj",
+        )
+
+    def test_newest_unclassified_skips_seed_and_classified(
+        self, db: Database
+    ) -> None:
+        self._msg(db, "old", 1)
+        self._msg(db, "new", 9)
+        self._msg(db, "seed-0001", 99)
+        db.save_classification("old", "{}")
+        assert db.unclassified_message_ids(limit=10) == ["new"]
+        assert db.count_unclassified() == 1
+

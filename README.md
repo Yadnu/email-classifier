@@ -92,19 +92,16 @@ uv run email-classifier serve
 | `GET /api/messages/{id}` | Full contract + Jev state, questions, span tree, decision trail |
 | `GET /api/stats` | Dashboard aggregates |
 | `GET /api/calibration` | Spam/reply calibration buckets |
+| `GET /api/explorer` | Stored answers for the threshold explorer |
+| `GET /api/thresholds` | Current `config.yaml` threshold values |
+| `POST /api/thresholds` | Write thresholds to `config.yaml` (`confirm: true`) |
 | `GET /api/live` | SSE stream of new classifications |
+| `POST /api/update` | Ingest Gmail, then classify up to 20 unclassified real messages |
 | `POST /api/replay/{id}` | Re-run stored state through Jev; return a diff |
 
-Seed fake rows so the GUI can be built without real mail (ids are `seed-0000` …):
+The Next.js GUI lives in `web/`. Keep the API on 127.0.0.1:8000.
 
 ```sh
-uv run python scripts/seed_classifications.py --count 80
-```
-
-The Next.js GUI (list + detail) lives in `web/`. Keep the API on 127.0.0.1:8000.
-
-```sh
-uv run python scripts/seed_classifications.py --count 80
 uv run email-classifier serve
 # other terminal:
 cd web
@@ -112,7 +109,7 @@ npm install
 npm run dev
 ```
 
-Open http://127.0.0.1:3000 — message list, click a row for waterfall + Jev question cards.
+Open http://127.0.0.1:3000 — live wire, ledger at `/messages`, metrics at `/metrics`, threshold explorer at `/thresholds`. Header **update** syncs Gmail and classifies a batch of real mail (no fake/seed rows). **j/k** move, **Enter** open, **Esc** back from a message, **/** search. Header **redact** masks subjects, senders, and body excerpts (saved in localStorage). Theme cycles system / light / dark.
 
 ### Classify a single message
 

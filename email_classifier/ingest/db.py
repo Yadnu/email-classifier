@@ -33,6 +33,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Generator, Optional
 
+SEED_MESSAGE_PREFIX = "seed-"
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS messages (
     message_id    TEXT PRIMARY KEY,
@@ -337,8 +339,8 @@ class Database:
         limit: int = 50,
     ) -> list[sqlite3.Row]:
         """Newest-first latest classification per message, with optional filters."""
-        clauses = ["1=1"]
-        args: list[Any] = []
+        clauses = ["m.message_id NOT LIKE ?"]
+        args: list[Any] = [f"{SEED_MESSAGE_PREFIX}%"]
         if start_iso:
             clauses.append("c.classified_at >= ?")
             args.append(start_iso)
@@ -439,6 +441,35 @@ class Database:
             """,
             args,
         ).fetchall()
+
+    def unclassified_message_ids(self, *, limit: int = 20) -> list[str]:
+        """Newest ingested Gmail ids that have never been classified. Skips seed-*."""
+        rows = self.conn.execute(
+            """
+            SELECT m.message_id
+            FROM messages m
+            LEFT JOIN classifications c ON c.message_id = m.message_id
+            WHERE c.id IS NULL
+              AND m.message_id NOT LIKE ?
+            ORDER BY m.internal_date DESC, m.message_id DESC
+            LIMIT ?
+            """,
+            (f"{SEED_MESSAGE_PREFIX}%", limit),
+        ).fetchall()
+        return [r["message_id"] for r in rows]
+
+    def count_unclassified(self) -> int:
+        row = self.conn.execute(
+            """
+            SELECT COUNT(*) AS n
+            FROM messages m
+            LEFT JOIN classifications c ON c.message_id = m.message_id
+            WHERE c.id IS NULL
+              AND m.message_id NOT LIKE ?
+            """,
+            (f"{SEED_MESSAGE_PREFIX}%",),
+        ).fetchone()
+        return int(row["n"]) if row else 0
 
     def iter_all_messages(
         self,

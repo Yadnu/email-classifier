@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
-:root {
+:root,
+html[data-theme="light"] {
   --paper: #f3efe4;
   --paper-2: #ebe4d4;
   --ink: #1c1914;
@@ -33,7 +34,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --paper: #141210;
     --paper-2: #1c1916;
     --ink: #ece6d8;
@@ -66,6 +67,38 @@
   }
 }
 
+html[data-theme="dark"] {
+  --paper: #141210;
+  --paper-2: #1c1916;
+  --ink: #ece6d8;
+  --muted: #9a9284;
+  --line: #3a342c;
+  --track: #2a261f;
+  --bar: #5c5344;
+  --row-hover: #24201b;
+  --spam-fg: #e0a04a;
+  --spam-bd: #e0a04a;
+  --phishing-bd: #e25b4c;
+  --cat-legitimate-bg: #2a2722;
+  --cat-legitimate-fg: #d8d0c2;
+  --cat-legitimate-bd: #6e6758;
+  --cat-promotional-bg: #1a2a38;
+  --cat-promotional-fg: #8ec0e6;
+  --cat-promotional-bd: #3a7ca5;
+  --cat-spam-bg: #3a2a14;
+  --cat-spam-fg: #f0b45a;
+  --cat-spam-bd: #d28a2a;
+  --cat-phishing-bg: #3a1614;
+  --cat-phishing-fg: #f0a098;
+  --cat-phishing-bd: #e25b4c;
+  --cat-uncertain-bg: #2a2a2a;
+  --cat-uncertain-fg: #bbb;
+  --cat-uncertain-bd: #777;
+  --cat-other-bg: #262230;
+  --cat-other-fg: #c8bdd8;
+  --cat-other-bd: #7a6d8a;
+}
+
 @theme inline {
   --color-background: var(--paper);
   --color-foreground: var(--ink);
@@ -87,6 +120,26 @@ body {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.06'/%3E%3C/svg%3E");
 }
 
+.live-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.live-dot::before {
+  content: "";
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--cat-spam-bd);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--cat-spam-bd) 70%, transparent);
+  animation: pulse-dot 1.6s ease-out infinite;
+}
+@keyframes pulse-dot {
+  70% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+
 .bg-stripes {
   background-image: repeating-linear-gradient(
     -55deg,
@@ -95,4 +148,10 @@ body {
     rgb(255 255 255 / 0.18) 4px,
     rgb(255 255 255 / 0.18) 8px
   );
+}
+
+.row-active {
+  outline: 1px solid var(--ink);
+  outline-offset: -1px;
+  background: var(--row-hover);
 }

@@ -7,21 +7,30 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from email_classifier.api.compact import compact_row, gmail_spam
 from email_classifier.api.live import sse_lines, subscribe, unsubscribe
+from email_classifier.api.stats_build import build_stats
+from email_classifier.api.thresholds_io import (
+    THRESHOLD_KEYS,
+    config_path,
+    read_thresholds,
+    write_thresholds,
+)
 from email_classifier.config import load_config
 from email_classifier.decide.explain import decision_trail, explain_verdict
-from email_classifier.eval.metrics import calibration_table, percentiles
+from email_classifier.eval.metrics import calibration_table
 from email_classifier.eval.stats import parse_date
 from email_classifier.ingest.db import Database
+from email_classifier.ingest.runner import IngestStats, run_ingest
 from email_classifier.jev.client import JevClient
 from email_classifier.jev.snapshot import snapshot_questions
 from email_classifier.jev.state import BuiltState, JevState, build_state
 from email_classifier.models.result import ClassificationResult
 from email_classifier.observability.spans import span_tree_from_result
 from email_classifier.parse.mime import parse_raw
-from email_classifier.pipeline import _ms, _timings, build_result
+from email_classifier.pipeline import _ms, _timings, build_result, classify_message as run_classify
 
 router = APIRouter(prefix="/api")
 
@@ -204,69 +213,12 @@ def stats(
     to_date: Optional[str] = Query(None, alias="to"),
     bucket: str = Query("hour"),
 ) -> dict[str, Any]:
-    if bucket not in {"hour", "day"}:
-        raise HTTPException(status_code=400, detail="bucket must be hour or day")
+    if bucket not in {"minute", "hour", "day"}:
+        raise HTTPException(status_code=400, detail="bucket must be minute, hour, or day")
     db = _db()
     try:
         rows = db.classifications_in_range(_start_iso(from_date), _end_iso(to_date))
-        cats: dict[str, int] = {}
-        totals: list[float] = []
-        jevs: list[float] = []
-        costs: list[float] = []
-        tokens = 0
-        confidences: list[float] = []
-        uncertain = 0
-        errors = 0
-        limited = 0
-        retries = 0
-        agree = 0
-        labeled = 0
-        hist = [0] * 10
-        series: dict[str, dict[str, int]] = {}
-        for row in rows:
-            result = ClassificationResult.model_validate_json(row["result_json"])
-            cats[result.category] = cats.get(result.category, 0) + 1
-            totals.append(float(result.classification_time_ms.total))
-            jevs.append(float(result.classification_time_ms.jev_call))
-            costs.append(result.observability.cost_usd)
-            tokens += result.observability.input_tokens
-            confidences.append(result.category_confidence)
-            if result.category == "uncertain":
-                uncertain += 1
-            if result.observability.decision_path == "jev_error":
-                errors += 1
-            if result.observability.rate_limited:
-                limited += 1
-            retries += result.observability.retries
-            labeled += 1
-            if gmail_spam(row["label_ids"]) == result.spam:
-                agree += 1
-            idx = min(int(result.category_confidence * 10), 9)
-            hist[idx] += 1
-            key = row["classified_at"][:13] if bucket == "hour" else row["classified_at"][:10]
-            bucket_counts = series.setdefault(key, {})
-            bucket_counts[result.category] = bucket_counts.get(result.category, 0) + 1
-        n = len(rows)
-        return {
-            "n": n,
-            "counts_by_category": cats,
-            "latency": {
-                "total": percentiles(totals),
-                "jev_call": percentiles(jevs),
-            },
-            "cost_usd_total": sum(costs),
-            "cost_usd_per_email": (sum(costs) / n) if n else 0.0,
-            "input_tokens_total": tokens,
-            "confidence_histogram": [
-                {"lo": i / 10, "hi": (i + 1) / 10, "n": hist[i]} for i in range(10)
-            ],
-            "uncertain_rate": (uncertain / n) if n else 0.0,
-            "errors": errors,
-            "rate_limited": limited,
-            "retries": retries,
-            "gmail_agreement": (agree / labeled) if labeled else 0.0,
-            "volume": [{"bucket": k, "counts": v} for k, v in sorted(series.items())],
-        }
+        return build_stats(rows, bucket)
     finally:
         db.close()
 
@@ -324,7 +276,11 @@ def live() -> StreamingResponse:
     return StreamingResponse(
         gen(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
@@ -409,3 +365,107 @@ def health() -> dict[str, Any]:
         }
     finally:
         db.close()
+
+
+class SaveThresholdsBody(BaseModel):
+    thresholds: dict[str, float]
+    confirm: bool = False
+
+
+class UpdateBody(BaseModel):
+    classify_limit: int = 20
+
+
+@router.post("/update")
+def update_mailbox(body: UpdateBody | None = None) -> dict[str, Any]:
+    """Sync Gmail into SQLite, then classify a batch of unclassified real mail.
+
+    Counts only — never returns subjects or addresses. Ignores seed-* ids.
+    """
+    payload = body or UpdateBody()
+    limit = payload.classify_limit
+    if limit < 0 or limit > 50:
+        raise HTTPException(status_code=400, detail="classify_limit must be 0–50")
+    cfg = load_config()
+    ingest_ok = True
+    stats = IngestStats()
+    try:
+        stats = run_ingest(cfg)
+    except Exception:
+        ingest_ok = False
+
+    classified = 0
+    classify_failed = 0
+    remaining = 0
+    db = _db()
+    try:
+        for message_id in db.unclassified_message_ids(limit=limit):
+            try:
+                run_classify(message_id, cfg, db=db)
+                classified += 1
+            except Exception:
+                classify_failed += 1
+        remaining = db.count_unclassified()
+    finally:
+        db.close()
+
+    return {
+        "ingest_ok": ingest_ok,
+        "ingested_new": stats.inserted,
+        "ingested_updated": stats.updated,
+        "ingested_fetched": stats.fetched,
+        "ingest_complete": stats.complete,
+        "classified": classified,
+        "classify_failed": classify_failed,
+        "unclassified_remaining": remaining,
+    }
+
+
+@router.get("/explorer")
+def explorer(limit: int = Query(500, ge=1, le=2000)) -> dict[str, Any]:
+    db = _db()
+    try:
+        rows = db.list_latest_classified(limit=limit)
+        items = []
+        for row in rows:
+            result = ClassificationResult.model_validate_json(row["result_json"])
+            items.append(
+                compact_row(
+                    message_id=row["message_id"],
+                    classified_at=row["classified_at"],
+                    classification_id=row["id"],
+                    result=result,
+                    from_header=row["from_header"],
+                    subject=row["subject"],
+                    label_ids_json=row["label_ids"],
+                )
+            )
+        return {"items": items, "thresholds": read_thresholds()}
+    finally:
+        db.close()
+
+
+@router.get("/thresholds")
+def get_thresholds() -> dict[str, Any]:
+    path = config_path()
+    return {"path": str(path), "thresholds": read_thresholds()}
+
+
+@router.post("/thresholds")
+def save_thresholds(body: SaveThresholdsBody) -> dict[str, Any]:
+    if not body.confirm:
+        raise HTTPException(status_code=400, detail="set confirm=true to write config.yaml")
+    missing = [k for k in THRESHOLD_KEYS if k not in body.thresholds]
+    extra = [k for k in body.thresholds if k not in THRESHOLD_KEYS]
+    if missing or extra:
+        raise HTTPException(
+            status_code=400,
+            detail=f"threshold keys must be exactly {list(THRESHOLD_KEYS)}",
+        )
+    try:
+        written = write_thresholds(body.thresholds)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "path": str(config_path()), "thresholds": written}

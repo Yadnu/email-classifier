@@ -6,6 +6,17 @@ export type Category =
   | "other"
   | "uncertain";
 
+export type UpdateResult = {
+  ingest_ok: boolean;
+  ingested_new: number;
+  ingested_updated: number;
+  ingested_fetched: number;
+  ingest_complete: boolean;
+  classified: number;
+  classify_failed: number;
+  unclassified_remaining: number;
+};
+
 export type CompactMessage = {
   id: number;
   message_id: string;
@@ -26,6 +37,9 @@ export type CompactMessage = {
   model_version: string;
   retries: number;
   rate_limited: boolean;
+  jev_category: string;
+  credential_request: number;
+  brand_impersonation: number;
 };
 
 export type SpanNode = {
@@ -112,3 +126,56 @@ export type MessageDetail = {
   from_header: string | null;
   subject: string | null;
 };
+
+export type Pct = { "50": number; "95": number; "99": number };
+
+export type StatsSeriesPoint = {
+  bucket: string;
+  n: number;
+  counts: Record<string, number>;
+  latency_total: Pct;
+  latency_jev: Pct;
+  cost_usd: number;
+  cost_usd_cumulative: number;
+  input_tokens: number;
+  uncertain_n: number;
+  uncertain_rate: number;
+  errors: number;
+  rate_limited: number;
+  retries: number;
+  gmail_agreement: number;
+};
+
+export type StatsResponse = {
+  n: number;
+  counts_by_category: Record<string, number>;
+  latency: { total: Pct; jev_call: Pct };
+  latency_histogram: { lo: number; hi: number | null; n: number; label: string }[];
+  cost_usd_total: number;
+  cost_usd_per_email: number;
+  cost_usd_per_1000: number;
+  projected_cost_usd: { emails_10000: number; emails_100000: number };
+  input_tokens_total: number;
+  confidence_histogram: { lo: number; hi: number; n: number }[];
+  uncertain_rate: number;
+  errors: number;
+  rate_limited: number;
+  retries: number;
+  gmail_agreement: number;
+  volume: { bucket: string; counts: Record<string, number> }[];
+  series: StatsSeriesPoint[];
+};
+
+export type CalibrationBin = {
+  lo: number;
+  hi: number;
+  n: number;
+  mean_predicted: number;
+  actual_rate: number;
+};
+
+export type CalibrationResponse = {
+  spam: CalibrationBin[];
+  reply: CalibrationBin[];
+};
+

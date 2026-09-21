@@ -1,8 +1,13 @@
+"use client";
+
 import { CategoryPill } from "@/components/CategoryPill";
+import { useChrome } from "@/components/ChromeProvider";
 import { formatCostUsd, formatMs, formatProb } from "@/lib/format";
+import { redactValue } from "@/lib/redact";
 import type { MessageDetail } from "@/lib/types";
 
 export function VerdictHeader({ detail }: { detail: MessageDetail }) {
+  const { redact } = useChrome();
   const r = detail.result;
   return (
     <header className="border-b border-[var(--line)] pb-6">
@@ -12,6 +17,10 @@ export function VerdictHeader({ detail }: { detail: MessageDetail }) {
           {r.spam ? "Spam" : "Ham"}
         </div>
       </div>
+      <p className="mt-3 font-mono text-xs text-[var(--muted)]">
+        {redactValue(detail.from_header ?? "", redact) || "no From header"} ·{" "}
+        {redactValue(detail.subject ?? "", redact) || "(no subject)"}
+      </p>
       <p className="mt-4 max-w-3xl text-lg leading-snug">{detail.explanation}</p>
       <dl className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-6 font-mono text-sm">
         <Stat label="spam probability" value={formatProb(r.spam_probability, "probability")} />

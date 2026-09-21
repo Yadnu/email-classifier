@@ -66,4 +66,10 @@ def compact_row(
         "model_version": result.observability.model_version,
         "retries": result.observability.retries,
         "rate_limited": result.observability.rate_limited,
+        "jev_category": max(
+            result.category_probabilities,
+            key=lambda k: result.category_probabilities[k],
+        ),
+        "credential_request": result.signals.credential_request,
+        "brand_impersonation": result.signals.brand_impersonation,
     }

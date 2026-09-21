@@ -68,6 +68,8 @@ class TestGuiApi:
         assert items[0]["message_id"] == "m1"
         assert items[0]["sender_domain"] == "shop.example.test"
         assert items[0]["category"] == "spam"
+        assert items[0]["jev_category"] == "spam"
+        assert "credential_request" in items[0]
 
         detail = client.get("/api/messages/m1")
         assert detail.status_code == 200
@@ -94,6 +96,9 @@ class TestGuiApi:
         stats = client.get("/api/stats").json()
         assert stats["n"] == 2
         assert stats["counts_by_category"]["spam"] == 1
+        assert stats["series"]
+        assert "emails_10000" in stats["projected_cost_usd"]
+        assert stats["latency_histogram"]
         cal = client.get("/api/calibration").json()
         assert "spam" in cal and "reply" in cal
 
@@ -129,6 +134,71 @@ class TestGuiApi:
         payload = resp.json()
         assert "previous" in payload and "replayed" in payload
         assert "diff" in payload
+
+
+    def test_thresholds_require_confirm(self, app_config: AppConfig, db: Database, monkeypatch) -> None:
+        app_config.ingest.db_path = db.db_path.as_posix()
+        client = _client(app_config, monkeypatch)
+        cur = client.get("/api/thresholds").json()["thresholds"]
+        resp = client.post("/api/thresholds", json={"thresholds": cur, "confirm": False})
+        assert resp.status_code == 400
+
+
+    def test_explorer(self, app_config: AppConfig, db: Database, monkeypatch) -> None:
+        app_config.ingest.db_path = db.db_path.as_posix()
+        _seed(db, "m1", _result("m1", category="spam", spam=True), labels=["SPAM"])
+        client = _client(app_config, monkeypatch)
+        body = client.get("/api/explorer").json()
+        assert body["items"][0]["message_id"] == "m1"
+        assert "spam_is_spam" in body["thresholds"]
+
+    def test_update_classifies_real_mail_not_seed(
+        self, app_config: AppConfig, db: Database, monkeypatch
+    ) -> None:
+        from email_classifier.ingest.runner import IngestStats
+
+        app_config.ingest.db_path = db.db_path.as_posix()
+        db.upsert_message(
+            "real1",
+            "th",
+            9,
+            "1",
+            make_raw_email(subject="Hi"),
+            ["INBOX"],
+            "a@shop.example.test",
+            "Hi",
+        )
+        _seed(db, "seed-0001", _result("seed-0001", category="spam", spam=True))
+
+        classified: list[str] = []
+
+        def fake_ingest(cfg, force_full=False):
+            return IngestStats(fetched=1, inserted=1, complete=True)
+
+        def fake_classify(message_id, cfg, db=None, **kwargs):
+            classified.append(message_id)
+            result = _result(message_id, category="legitimate", spam=False)
+            target = db or Database(cfg.ingest.db_path)
+            target.save_classification(message_id, result.model_dump_json())
+            return result
+
+        import email_classifier.api.gui as gui_mod
+
+        monkeypatch.setattr(gui_mod, "run_ingest", fake_ingest)
+        monkeypatch.setattr(gui_mod, "run_classify", fake_classify)
+        client = _client(app_config, monkeypatch)
+        resp = client.post("/api/update", json={"classify_limit": 20})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ingest_ok"] is True
+        assert body["ingested_new"] == 1
+        assert body["classified"] == 1
+        assert classified == ["real1"]
+        assert "subject" not in body
+        listing = client.get("/api/messages").json()["items"]
+        ids = {row["message_id"] for row in listing}
+        assert "real1" in ids
+        assert "seed-0001" not in ids
 
 
 class TestExplain:

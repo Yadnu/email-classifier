@@ -12,3 +12,16 @@ export async function apiGet<T>(path: string): Promise<T> {
 export function swrFetcher<T>(path: string) {
   return apiGet<T>(path);
 }
+
+export async function apiPost<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`${res.status} ${res.statusText} ${detail}`);
+  }
+  return res.json() as Promise<T>;
+}

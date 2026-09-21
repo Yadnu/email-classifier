@@ -5,6 +5,8 @@ import { QuestionCards } from "@/components/QuestionCards";
 import { StateJson } from "@/components/StateJson";
 import { VerdictHeader } from "@/components/VerdictHeader";
 import { Waterfall } from "@/components/Waterfall";
+import { ApiDown, DetailSkeleton } from "@/components/States";
+import { useListHotkeys } from "@/hooks/useListHotkeys";
 import { swrFetcher } from "@/lib/api";
 import { formatCostUsd, formatTokens } from "@/lib/format";
 import type { MessageDetail } from "@/lib/types";
@@ -17,27 +19,35 @@ export function MessageDetailClient({ id }: { id: string }) {
     swrFetcher,
   );
 
+  useListHotkeys({
+    count: 0,
+    selected: 0,
+    setSelected: () => {},
+    ids: [],
+  });
+
   if (error) {
     return (
-      <p className="p-8 text-sm">
-        Could not load this message. Is the API running?{" "}
-        <Link href="/" className="underline">
-          Back to list
+      <div className="p-8">
+        <ApiDown />
+        <Link href="/messages" className="mt-4 inline-block text-sm underline">
+          Back to ledger
         </Link>
-      </p>
+      </div>
     );
   }
   if (isLoading || !data) {
-    return <div className="m-8 h-[80vh] animate-pulse bg-[var(--paper-2)]" />;
+    return <DetailSkeleton />;
   }
 
   const obs = data.result.observability;
 
   return (
     <article className="mx-auto max-w-6xl space-y-12 px-4 py-8 sm:px-8">
-      <Link href="/" className="font-mono text-[11px] uppercase tracking-widest text-[var(--muted)]">
-        ← all classifications
-      </Link>
+      <div className="flex gap-4 font-mono text-[11px] uppercase tracking-widest text-[var(--muted)]">
+        <Link href="/">← live wire</Link>
+        <Link href="/messages">ledger</Link>
+      </div>
       <VerdictHeader detail={data} />
 
       <section>

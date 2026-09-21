@@ -1,9 +1,10 @@
 "use client";
 
 import { MessageTable } from "@/components/MessageTable";
+import { ApiDown, EmptyState, TableSkeleton } from "@/components/States";
 import { swrFetcher } from "@/lib/api";
 import type { CompactMessage } from "@/lib/types";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 
 type ListResponse = { items: CompactMessage[]; next_cursor: string | null };
@@ -12,6 +13,7 @@ export function MessageListClient() {
   const [category, setCategory] = useState("");
   const [minConf, setMinConf] = useState("");
   const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const qs = useMemo(() => {
     const p = new URLSearchParams();
@@ -29,12 +31,12 @@ export function MessageListClient() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-[var(--muted)]">
-            inspect
+            ledger
           </p>
           <h1 className="font-display text-4xl tracking-tight">Classifications</h1>
           <p className="mt-1 max-w-xl text-sm text-[var(--muted)]">
-            Every row is one stored Jev call. Open a message to see why it was
-            labeled, how long each stage took, and what it cost.
+            Every stored Jev call on real Gmail. Press update to ingest and
+            classify a batch; this table is the archive.
           </p>
         </div>
         <form
@@ -42,6 +44,7 @@ export function MessageListClient() {
           onSubmit={(e) => e.preventDefault()}
         >
           <input
+            ref={searchRef}
             className="border border-[var(--line)] bg-[var(--paper)] px-2 py-1.5"
             placeholder="search subject or domain"
             value={search}
@@ -73,27 +76,18 @@ export function MessageListClient() {
         </form>
       </header>
 
-      {error ? (
-        <div className="border border-[var(--phishing-bd)] p-6 text-sm">
-          Cannot reach the API at 127.0.0.1:8000. Start it with{" "}
-          <code className="font-mono">uv run email-classifier serve</code>.
-        </div>
-      ) : null}
-
-      {isLoading ? (
-        <div className="h-64 animate-pulse border border-[var(--line)] bg-[var(--paper-2)]" />
-      ) : null}
-
+      {error ? <ApiDown /> : null}
+      {isLoading ? <TableSkeleton /> : null}
       {data && data.items.length === 0 ? (
-        <div className="border border-dashed border-[var(--line)] p-10 text-sm leading-relaxed">
-          No classifications yet. Run{" "}
-          <code className="font-mono">uv run python scripts/seed_classifications.py</code>{" "}
-          or <code className="font-mono">uv run email-classifier classify &lt;id&gt;</code>{" "}
-          after ingest.
-        </div>
+        <EmptyState>
+          No classifications yet. Press{" "}
+          <span className="font-mono">update</span> to pull Gmail and classify
+          real mail.
+        </EmptyState>
       ) : null}
-
-      {data && data.items.length > 0 ? <MessageTable rows={data.items} /> : null}
+      {data && data.items.length > 0 ? (
+        <MessageTable rows={data.items} searchRef={searchRef} />
+      ) : null}
     </div>
   );
 }
