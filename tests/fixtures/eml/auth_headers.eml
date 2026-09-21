@@ -1,0 +1,13 @@
+From: Notify Example <notify@example.com>
+To: bob@example.com
+Subject: Account notice
+Date: Mon, 1 Jan 2024 12:00:00 +0000
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@example.com header.s=s1;
+       spf=pass (google.com: domain of notify@example.com designates 192.0.2.1 as permitted sender) smtp.mailfrom=notify@example.com;
+       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=example.com
+Received-SPF: pass (google.com: domain of notify@example.com designates 192.0.2.1 as permitted sender)
+Content-Type: text/plain; charset="utf-8"
+
+Your statement is ready.
+

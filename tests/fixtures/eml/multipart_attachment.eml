@@ -1,0 +1,21 @@
+From: Carol Example <carol@example.com>
+To: bob@example.com
+Subject: Invoice attached
+Date: Mon, 1 Jan 2024 12:00:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="BOUNDARY123"
+
+--BOUNDARY123
+Content-Type: text/plain; charset="utf-8"
+
+Please find the invoice attached.
+
+--BOUNDARY123
+Content-Type: application/pdf; name="invoice.pdf"
+Content-Disposition: attachment; filename="invoice.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjAK
+
+--BOUNDARY123--
+

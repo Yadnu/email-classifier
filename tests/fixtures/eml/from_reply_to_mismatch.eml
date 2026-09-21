@@ -1,0 +1,10 @@
+From: PayPal Support <support@paypal.example.com>
+Reply-To: helpdesk@unrelated-domain.test
+To: bob@example.com
+Subject: Verify your account
+Date: Mon, 1 Jan 2024 12:00:00 +0000
+Authentication-Results: mx.google.com; spf=fail; dkim=fail; dmarc=fail
+Content-Type: text/plain; charset="utf-8"
+
+Click https://unrelated-domain.test/login to continue.
+

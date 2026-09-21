@@ -1,0 +1,16 @@
+From: Shop Example <offers@shop.example.com>
+To: bob@example.com
+Subject: This week's deals
+Date: Mon, 1 Jan 2024 12:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/html; charset="utf-8"
+
+<html>
+<body>
+<p>See our <a href="https://shop.example.com/deals">deals</a>.</p>
+<p>Also <a href="https://www.shop.example.com/sale">sale</a> and
+<a href="https://cdn.example.net/img.png">image</a>.</p>
+<script>alert('ignore me')</script>
+</body>
+</html>
+

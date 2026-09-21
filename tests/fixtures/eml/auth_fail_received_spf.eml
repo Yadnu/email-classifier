@@ -1,0 +1,9 @@
+From: sender@example.com
+To: bob@example.com
+Subject: No Authentication-Results
+Date: Mon, 1 Jan 2024 12:00:00 +0000
+Received-SPF: fail (google.com: domain of sender@example.com does not designate 198.51.100.1 as permitted sender)
+Content-Type: text/plain; charset="utf-8"
+
+Plain body only.
+
