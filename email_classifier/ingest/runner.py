@@ -39,6 +39,7 @@ class IngestStats:
     promotional: int = 0
     skipped: int = 0
     history_id: Optional[str] = None
+    complete: bool = True
 
 
 def _label_counts(label: Optional[str], stats: IngestStats) -> None:
@@ -83,10 +84,20 @@ def _full_fetch(service, db: Database, cfg: AppConfig) -> IngestStats:
             max_messages=ic.max_messages,
         )
     )
+    pending = [mid for mid in message_ids if not db.message_exists(mid)]
+    already = len(message_ids) - len(pending)
     typer.echo(f"  Found {len(message_ids):,} messages in mailbox.")
+    if already:
+        typer.echo(f"  Skipping {already:,} already stored; fetching {len(pending):,}.")
 
     # Batch-get RAW bodies in chunks.
-    for msg in batch_get_messages(service, message_ids, batch_size=ic.batch_size):
+    for msg in batch_get_messages(
+        service,
+        pending,
+        batch_size=ic.batch_size,
+        batch_pause_s=ic.batch_pause_s,
+        max_retries=ic.max_retries,
+    ):
         stats.fetched += 1
         label = label_for_message(
             msg["labelIds"], promotions_as=ic.promotions_as
@@ -115,6 +126,13 @@ def _full_fetch(service, db: Database, cfg: AppConfig) -> IngestStats:
             typer.echo(f"  … {stats.fetched:,} processed", nl=False)
             typer.echo(f"  (inserted {stats.inserted:,})", nl=True)
 
+    remaining = [mid for mid in message_ids if not db.message_exists(mid)]
+    stats.complete = len(remaining) == 0
+    if remaining:
+        typer.echo(
+            f"  Incomplete: {len(remaining):,} message(s) not stored yet. "
+            "Re-run ingest --full after rate limits cool down."
+        )
     return stats
 
 
@@ -181,7 +199,11 @@ def _incremental_sync(
     # Fetch new/updated messages.
     if ids_to_fetch:
         for msg in batch_get_messages(
-            service, list(ids_to_fetch), batch_size=ic.batch_size
+            service,
+            list(ids_to_fetch),
+            batch_size=ic.batch_size,
+            batch_pause_s=ic.batch_pause_s,
+            max_retries=ic.max_retries,
         ):
             stats.fetched += 1
             label = label_for_message(
@@ -246,10 +268,13 @@ def run_ingest(cfg: AppConfig, force_full: bool = False) -> IngestStats:
         else:
             stats = _incremental_sync(service, db, cfg, saved_history_id)
 
-        # Persist the historyId we received from the profile call.
-        if current_history_id:
+        # Only advance historyId when this run actually finished.
+        # An incomplete full fetch must not skip remaining older mail.
+        if current_history_id and stats.complete:
             db.set_history_id(current_history_id)
             stats.history_id = current_history_id
+        elif not stats.complete:
+            typer.echo("  historyId not updated (ingest incomplete).")
 
     _print_stats(stats)
     return stats

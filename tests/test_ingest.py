@@ -23,6 +23,7 @@ from email_classifier.config import AppConfig
 from email_classifier.ingest.db import Database
 from email_classifier.ingest.gmail import (
     HistoryExpiredError,
+    _is_rate_limit,
     batch_get_messages,
     iter_history_changes,
     iter_message_ids,
@@ -195,6 +196,13 @@ class TestBatchGetMessages:
 
 
 # ─── iter_history_changes ─────────────────────────────────────────────────────
+
+
+class TestRateLimitDetect:
+    def test_text_match(self) -> None:
+        assert _is_rate_limit(RuntimeError("Rate Limit Exceeded")) is True
+        assert _is_rate_limit(RuntimeError("userRateLimitExceeded")) is True
+        assert _is_rate_limit(RuntimeError("not found")) is False
 
 
 class TestIterHistoryChanges:

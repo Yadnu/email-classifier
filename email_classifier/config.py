@@ -25,7 +25,10 @@ class GmailConfig:
 class IngestConfig:
     db_path: str = "data/classifier.db"
     page_size: int = 500
-    batch_size: int = 50
+    batch_size: int = 10
+    # Pause between Gmail batch requests to stay under ~250 quota units/sec.
+    batch_pause_s: float = 0.6
+    max_retries: int = 6
     max_messages: Optional[int] = None
     promotions_as: str = "promotional"
     include_spam_trash: bool = True

@@ -85,7 +85,7 @@ class Database:
     # ── lifecycle ─────────────────────────────────────────────────────────────
 
     def open(self) -> "Database":
-        self._conn = sqlite3.connect(str(self.db_path))
+        self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         # WAL mode for better concurrent reads.
         self._conn.execute("PRAGMA journal_mode=WAL")
@@ -239,6 +239,17 @@ class Database:
         return self.conn.execute(
             "SELECT * FROM messages WHERE message_id = ?", (message_id,)
         ).fetchone()
+
+    def save_classification(self, message_id: str, result_json: str) -> None:
+        """Persist a ClassificationResult for historical analysis."""
+        with self.transaction() as c:
+            c.execute(
+                """
+                INSERT INTO classifications (message_id, classified_at, result_json)
+                VALUES (?, ?, ?)
+                """,
+                (message_id, _now_iso(), result_json),
+            )
 
     def iter_all_messages(
         self,

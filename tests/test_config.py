@@ -12,7 +12,7 @@ from email_classifier.config import AppConfig, load_config
 class TestLoadConfig:
     def test_defaults_when_no_file(self, tmp_path: Path) -> None:
         cfg = load_config(tmp_path / "missing.yaml")
-        assert cfg.ingest.batch_size == 50
+        assert cfg.ingest.batch_size == 10
         assert cfg.jev.model == "jev-1.13.0"
         assert cfg.thresholds.uncertain_floor == 0.50
 

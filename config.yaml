@@ -26,8 +26,13 @@ ingest:
   db_path: "data/classifier.db"
   # Max messages per page from messages.list (1–500).
   page_size: 500
-  # Max messages per Gmail batch request for messages.get RAW.
-  batch_size: 50
+  # Max messages per Gmail batch request for messages.get raw.
+  # messages.get costs 5 quota units; 50-per-batch hits the 250/sec cap.
+  batch_size: 10
+  # Seconds to wait between batches.
+  batch_pause_s: 0.6
+  # Retries per batch / message on HTTP 429 or userRateLimitExceeded.
+  max_retries: 6
   # Safety cap: stop after ingesting this many messages in a single run.
   # Set to null to disable.
   max_messages: null
