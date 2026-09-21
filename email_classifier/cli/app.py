@@ -95,9 +95,16 @@ def evaluate(
         typer.Option("--config", help="Path to config.yaml.", envvar="CLASSIFIER_CONFIG"),
     ] = "config.yaml",
 ) -> None:
-    """Evaluate precision/recall/F1 against labeled local dataset.  (Stage 5)"""
-    typer.echo("evaluate command is available in Stage 5.", err=True)
-    raise typer.Exit(1)
+    """Evaluate precision/recall/F1 against labeled local classifications."""
+    from email_classifier.eval.evaluate import format_evaluate_report, run_evaluate
+
+    cfg = load_config(config)
+    try:
+        report = run_evaluate(cfg)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(format_evaluate_report(report))
 
 
 # ─── stats  (Stage 5) ─────────────────────────────────────────────────────────
@@ -118,9 +125,22 @@ def stats(
         typer.Option("--config", help="Path to config.yaml.", envvar="CLASSIFIER_CONFIG"),
     ] = "config.yaml",
 ) -> None:
-    """Report latency, category mix, cost, and drift stats for a date range.  (Stage 5)"""
-    typer.echo("stats command is available in Stage 5.", err=True)
-    raise typer.Exit(1)
+    """Report latency, category mix, cost, and drift stats for a date range."""
+    from email_classifier.eval.stats import (
+        format_stats_report,
+        parse_date,
+        run_stats,
+    )
+
+    cfg = load_config(config)
+    try:
+        parse_date(from_date)
+        parse_date(to_date, end_of_day=True)
+    except ValueError as exc:
+        typer.echo("Dates must be YYYY-MM-DD.", err=True)
+        raise typer.Exit(1) from exc
+    report = run_stats(cfg, from_date=from_date, to_date=to_date)
+    typer.echo(format_stats_report(report))
 
 
 # ─── label-inbox  (Stage 6) ───────────────────────────────────────────────────
@@ -137,9 +157,16 @@ def label_inbox(
         typer.Option("--config", help="Path to config.yaml.", envvar="CLASSIFIER_CONFIG"),
     ] = "config.yaml",
 ) -> None:
-    """Apply Jev-Spam / Jev-Phishing / Jev-Needs-Reply Gmail labels.  (Stage 6)"""
-    typer.echo("label-inbox command is available in Stage 6.", err=True)
-    raise typer.Exit(1)
+    """Apply Jev-Spam / Jev-Phishing / Jev-Needs-Reply. Dry-run unless --no-dry-run."""
+    from email_classifier.label.inbox import format_label_report, run_label_inbox
+
+    cfg = load_config(config)
+    try:
+        report = run_label_inbox(cfg, dry_run=dry_run)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(format_label_report(report))
 
 
 if __name__ == "__main__":

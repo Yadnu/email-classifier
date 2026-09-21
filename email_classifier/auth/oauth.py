@@ -136,6 +136,12 @@ def get_gmail_service(
     return build("gmail", "v1", credentials=creds)
 
 
+def modify_token_path(token_path: str) -> str:
+    """Sibling token file used only for gmail.modify (label-inbox)."""
+    path = Path(token_path)
+    return str(path.with_name(f"{path.stem}_modify{path.suffix}"))
+
+
 def has_modify_scope(token_path: str = "data/token.json") -> bool:
     """Return True if the persisted token includes the gmail.modify scope."""
     token_file = Path(token_path)

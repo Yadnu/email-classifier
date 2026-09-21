@@ -75,13 +75,33 @@ Output is counts only — no subjects or email addresses are printed.
 Ingested  1,247 messages  (312 spam, 935 ham)  historyId=3048291
 ```
 
-### Serve the API  *(Stage 4)*
+### Serve the API
+
+Binds **127.0.0.1** only (local single user, no auth).
 
 ```sh
-# POST /classify  and  GET /metrics
-email-classifier serve
-# or: uv run uvicorn email_classifier.api.app:app --host 127.0.0.1 --port 8000
+uv run email-classifier serve
 ```
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /classify` | Classify one Gmail id |
+| `GET /metrics` | Prometheus scrape |
+| `GET /api/health` | Jev key, Gmail token expiry, ingest time, row counts |
+| `GET /api/messages` | Paginated compact list (`from`, `to`, `category`, `min_confidence`, `search`, `cursor`) |
+| `GET /api/messages/{id}` | Full contract + Jev state, questions, span tree, decision trail |
+| `GET /api/stats` | Dashboard aggregates |
+| `GET /api/calibration` | Spam/reply calibration buckets |
+| `GET /api/live` | SSE stream of new classifications |
+| `POST /api/replay/{id}` | Re-run stored state through Jev; return a diff |
+
+Seed fake rows so the GUI can be built without real mail (ids are `seed-0000` …):
+
+```sh
+uv run python scripts/seed_classifications.py --count 80
+```
+
+The Next.js GUI is not in this stage. Point it at `http://127.0.0.1:8000` when it lands. CORS allows `http://127.0.0.1:3000`.
 
 ### Classify a single message
 
@@ -99,31 +119,35 @@ Sample compact output:
 [SPAM 97%] category=spam (0.94) reply=2% time=212ms (jev 148ms) model=jev-1.13.0
 ```
 
-### Evaluate  *(Stage 5)*
+### Evaluate
+
+Uses the latest stored classification per message and Gmail labels as ground truth (no new Jev calls).
 
 ```sh
 email-classifier evaluate
 ```
 
-Prints precision, recall, F1, confusion matrix, calibration table, threshold sweep, and cost/email.
+Prints precision, recall, F1, confusion matrix, spam/reply calibration, a threshold sweep that maximizes spam precision, the SPF/DKIM + From≠Reply-To baseline, cost/email, and p50/p95/p99 latency.
 
-### Stats  *(Stage 5)*
+### Stats
 
 ```sh
 email-classifier stats --from 2026-09-01 --to 2026-09-30
 ```
 
-Reports latency percentiles, category distribution, uncertain rate, cost, and Gmail-agreement rate.
-Flags drops vs the previous period according to `stats.drift_alert_pct` in `config.yaml`.
+Reports latency percentiles, category mix, mean confidence, uncertain rate, cost, and agreement vs Gmail `SPAM`.
+With `--from`, compares an equal-length previous window and flags drops above `stats.drift_alert_pct` in `config.yaml`.
 
-### Label inbox  *(Stage 6)*
+### Label inbox
 
 ```sh
 # Dry run (default — prints what would happen, changes nothing)
-email-classifier label-inbox --dry-run
-
-# Live run — applies Jev-Spam / Jev-Phishing / Jev-Needs-Reply labels only
 email-classifier label-inbox
+# same as: email-classifier label-inbox --dry-run
+
+# Live run — requests gmail.modify (token at data/token_modify.json)
+# and adds Jev-Spam / Jev-Phishing / Jev-Needs-Reply only
+email-classifier label-inbox --no-dry-run
 ```
 
 Never trashes, moves, or deletes messages. Uncertain verdicts are never labeled.
@@ -183,7 +207,8 @@ email_classifier/
 ├── decide/       Threshold logic, decision_path  (Stage 3)
 ├── models/       Pydantic output contract  (Stage 3)
 ├── observability/ OTel traces, Prometheus metrics, structlog JSON
-├── eval/         Precision/recall, calibration  (Stage 5)
+├── eval/         Precision/recall, calibration, stats, drift watch
+├── label/        label-inbox (Jev-Spam / Jev-Phishing / Jev-Needs-Reply)
 ├── api/          FastAPI endpoints  (Stage 3)
 └── cli/          Typer CLI
 deploy/           docker-compose, Prometheus config, Grafana dashboard

@@ -1,6 +1,7 @@
 """End-to-end classify: fetch → parse → state → one Jev call → decide."""
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from datetime import datetime, timezone
@@ -9,9 +10,12 @@ from typing import Any, Optional
 from dotenv import load_dotenv
 
 from email_classifier.config import AppConfig
+from email_classifier.api.compact import compact_row
+from email_classifier.api.live import publish_classification
 from email_classifier.decide.logic import decide
 from email_classifier.ingest.db import Database
 from email_classifier.jev.client import JevAnswers, JevClient
+from email_classifier.jev.snapshot import snapshot_questions
 from email_classifier.jev.state import BuiltState, build_state
 from email_classifier.models.result import (
     ClassificationResult,
@@ -28,6 +32,7 @@ from email_classifier.observability import (
     set_safe_span_attributes,
     setup_observability,
 )
+from email_classifier.observability.spans import span_tree_from_result
 from email_classifier.parse.mime import parse_raw
 
 CATEGORY_KEYS = ("spam", "phishing", "promotional", "legitimate", "other")
@@ -318,7 +323,43 @@ def classify_message(
             log_classification(result)
 
             if persist:
-                db.save_classification(message_id, result.model_dump_json())
+                answers_json = json.dumps(
+                    {
+                        "model": answers.model,
+                        "category": answers.category,
+                        "category_confidence": answers.category_confidence,
+                        "category_probabilities": answers.category_probabilities,
+                        "is_spam": answers.is_spam,
+                        "needs_reply": answers.needs_reply,
+                        "credential_request": answers.credential_request,
+                        "brand_impersonation": answers.brand_impersonation,
+                        "pressure_score": answers.pressure_score,
+                        "input_tokens": answers.input_tokens,
+                        "retries": answers.retries,
+                        "rate_limited": answers.rate_limited,
+                        "elapsed_ms": answers.elapsed_ms,
+                    }
+                )
+                row_id = db.save_classification(
+                    message_id,
+                    result.model_dump_json(),
+                    state_json=json.dumps(built.state.to_payload(), ensure_ascii=False),
+                    questions_json=json.dumps(snapshot_questions()),
+                    spans_json=json.dumps(span_tree_from_result(result)),
+                    answers_json=answers_json,
+                )
+                msg_row = db.get_message_row(message_id)
+                publish_classification(
+                    compact_row(
+                        message_id=message_id,
+                        classified_at=result.observability.timestamp,
+                        classification_id=row_id,
+                        result=result,
+                        from_header=msg_row["from_header"] if msg_row else None,
+                        subject=msg_row["subject"] if msg_row else None,
+                        label_ids_json=msg_row["label_ids"] if msg_row else "[]",
+                    )
+                )
             return result
     finally:
         if owns_db:

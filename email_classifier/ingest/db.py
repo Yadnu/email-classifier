@@ -65,6 +65,15 @@ CREATE TABLE IF NOT EXISTS classifications (
     result_json   TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS classification_traces (
+    classification_id INTEGER PRIMARY KEY
+        REFERENCES classifications (id) ON DELETE CASCADE,
+    state_json        TEXT NOT NULL,
+    questions_json    TEXT NOT NULL,
+    spans_json        TEXT NOT NULL,
+    answers_json      TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_classifications_message
     ON classifications (message_id);
 """
@@ -240,16 +249,196 @@ class Database:
             "SELECT * FROM messages WHERE message_id = ?", (message_id,)
         ).fetchone()
 
-    def save_classification(self, message_id: str, result_json: str) -> None:
-        """Persist a ClassificationResult for historical analysis."""
+    def save_classification(
+        self,
+        message_id: str,
+        result_json: str,
+        classified_at: Optional[str] = None,
+        *,
+        state_json: Optional[str] = None,
+        questions_json: Optional[str] = None,
+        spans_json: Optional[str] = None,
+        answers_json: Optional[str] = None,
+    ) -> int:
+        """Persist a ClassificationResult and optional inspectable trace. Returns row id."""
         with self.transaction() as c:
-            c.execute(
+            cur = c.execute(
                 """
                 INSERT INTO classifications (message_id, classified_at, result_json)
                 VALUES (?, ?, ?)
                 """,
-                (message_id, _now_iso(), result_json),
+                (message_id, classified_at or _now_iso(), result_json),
             )
+            row_id = int(cur.lastrowid)
+            if state_json is not None:
+                c.execute(
+                    """
+                    INSERT INTO classification_traces
+                        (classification_id, state_json, questions_json, spans_json, answers_json)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        row_id,
+                        state_json,
+                        questions_json or "[]",
+                        spans_json or "{}",
+                        answers_json or "{}",
+                    ),
+                )
+            return row_id
+
+    def get_latest_classification(self, message_id: str) -> Optional[sqlite3.Row]:
+        return self.conn.execute(
+            """
+            SELECT
+                c.id,
+                c.message_id,
+                c.classified_at,
+                c.result_json,
+                m.thread_id,
+                m.internal_date,
+                m.raw_rfc822,
+                m.label_ids,
+                m.from_header,
+                m.subject,
+                t.state_json,
+                t.questions_json,
+                t.spans_json,
+                t.answers_json
+            FROM classifications c
+            JOIN messages m ON m.message_id = c.message_id
+            LEFT JOIN classification_traces t ON t.classification_id = c.id
+            WHERE c.message_id = ?
+            ORDER BY c.id DESC
+            LIMIT 1
+            """,
+            (message_id,),
+        ).fetchone()
+
+    def last_ingest_at(self) -> Optional[str]:
+        row = self.conn.execute(
+            "SELECT updated_at FROM sync_state WHERE key = 'main'"
+        ).fetchone()
+        return row["updated_at"] if row else None
+
+    def count_classifications(self) -> int:
+        return self.conn.execute("SELECT COUNT(*) FROM classifications").fetchone()[0]
+
+    def list_latest_classified(
+        self,
+        *,
+        start_iso: Optional[str] = None,
+        end_iso: Optional[str] = None,
+        category: Optional[str] = None,
+        min_confidence: Optional[float] = None,
+        search: Optional[str] = None,
+        before_at: Optional[str] = None,
+        before_id: Optional[int] = None,
+        limit: int = 50,
+    ) -> list[sqlite3.Row]:
+        """Newest-first latest classification per message, with optional filters."""
+        clauses = ["1=1"]
+        args: list[Any] = []
+        if start_iso:
+            clauses.append("c.classified_at >= ?")
+            args.append(start_iso)
+        if end_iso:
+            clauses.append("c.classified_at < ?")
+            args.append(end_iso)
+        if category:
+            clauses.append("json_extract(c.result_json, '$.category') = ?")
+            args.append(category)
+        if min_confidence is not None:
+            clauses.append(
+                "CAST(json_extract(c.result_json, '$.category_confidence') AS REAL) >= ?"
+            )
+            args.append(min_confidence)
+        if search:
+            like = f"%{search}%"
+            clauses.append(
+                "(m.subject LIKE ? OR m.from_header LIKE ? OR m.message_id LIKE ?)"
+            )
+            args.extend([like, like, like])
+        if before_at is not None and before_id is not None:
+            clauses.append("(c.classified_at < ? OR (c.classified_at = ? AND c.id < ?))")
+            args.extend([before_at, before_at, before_id])
+        where = " AND ".join(clauses)
+        return self.conn.execute(
+            f"""
+            SELECT
+                c.id,
+                c.message_id,
+                c.classified_at,
+                c.result_json,
+                m.from_header,
+                m.subject,
+                m.label_ids
+            FROM classifications c
+            JOIN messages m ON m.message_id = c.message_id
+            JOIN (
+                SELECT message_id, MAX(id) AS max_id
+                FROM classifications
+                GROUP BY message_id
+            ) latest ON latest.max_id = c.id
+            WHERE {where}
+            ORDER BY c.classified_at DESC, c.id DESC
+            LIMIT ?
+            """,
+            [*args, limit],
+        ).fetchall()
+
+    def latest_classifications(self) -> list[sqlite3.Row]:
+        """Latest classification per message, joined to the message row."""
+        return self.conn.execute(
+            """
+            SELECT
+                m.message_id,
+                m.thread_id,
+                m.internal_date,
+                m.raw_rfc822,
+                m.label_ids,
+                c.result_json,
+                c.classified_at
+            FROM classifications c
+            JOIN messages m ON m.message_id = c.message_id
+            JOIN (
+                SELECT message_id, MAX(id) AS max_id
+                FROM classifications
+                GROUP BY message_id
+            ) latest ON latest.max_id = c.id
+            ORDER BY c.classified_at ASC
+            """
+        ).fetchall()
+
+    def classifications_in_range(
+        self,
+        start_iso: Optional[str] = None,
+        end_iso: Optional[str] = None,
+    ) -> list[sqlite3.Row]:
+        """Classifications with classified_at in [start_iso, end_iso)."""
+        clauses = ["1=1"]
+        args: list[str] = []
+        if start_iso:
+            clauses.append("c.classified_at >= ?")
+            args.append(start_iso)
+        if end_iso:
+            clauses.append("c.classified_at < ?")
+            args.append(end_iso)
+        where = " AND ".join(clauses)
+        return self.conn.execute(
+            f"""
+            SELECT
+                m.message_id,
+                m.label_ids,
+                c.result_json,
+                c.classified_at
+            FROM classifications c
+            JOIN messages m ON m.message_id = c.message_id
+            WHERE {where}
+            ORDER BY c.classified_at ASC
+            """,
+            args,
+        ).fetchall()
 
     def iter_all_messages(
         self,
