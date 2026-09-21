@@ -75,7 +75,7 @@ Output is counts only — no subjects or email addresses are printed.
 Ingested  1,247 messages  (312 spam, 935 ham)  historyId=3048291
 ```
 
-### Classify a single message  *(Stage 3)*
+### Classify a single message
 
 ```sh
 # Compact one-liner
