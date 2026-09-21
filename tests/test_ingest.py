@@ -360,6 +360,52 @@ class TestRunIngest:
         # m2 should be inserted; m1 was not touched.
         assert stats.inserted == 1
 
+    def test_backfill_missing_after_incremental(
+        self, app_config: AppConfig, tmp_data_dir: Path
+    ) -> None:
+        """Older mail missing from SQLite is fetched even when history is empty."""
+        service = self._build_service(["m1", "m_gap"])
+        with Database(app_config.ingest.db_path) as db:
+            db.upsert_message(
+                "m1", "t1", 1_000_000, "10001",
+                make_raw_email(), ["INBOX"], "a@x.com", "subj"
+            )
+            db.set_history_id("10001")
+
+        service.users().history().list.return_value.execute.return_value = {}
+        service.users().history().list_next.return_value = None
+        api_resps = {"m_gap": _make_raw_api_response("m_gap")}
+
+        def new_batch(callback):
+            b = MagicMock()
+            b._cb = callback
+            b._added: list[str] = []
+
+            def add(req, request_id: str):
+                b._added.append(request_id)
+
+            def execute():
+                for rid in b._added:
+                    if rid in api_resps:
+                        b._cb(rid, api_resps[rid], None)
+                    else:
+                        b._cb(rid, None, Exception("missing"))
+
+            b.add = add
+            b.execute = execute
+            return b
+
+        service.new_batch_http_request.side_effect = new_batch
+
+        with patch(
+            "email_classifier.ingest.runner.get_gmail_service", return_value=service
+        ):
+            stats = run_ingest(app_config)
+
+        assert stats.inserted == 1
+        with Database(app_config.ingest.db_path) as db:
+            assert db.message_exists("m_gap")
+
     def test_expired_history_falls_back_to_full(
         self, app_config: AppConfig, tmp_data_dir: Path
     ) -> None:

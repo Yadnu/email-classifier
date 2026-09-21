@@ -131,7 +131,7 @@ def _full_fetch(service, db: Database, cfg: AppConfig) -> IngestStats:
     if remaining:
         typer.echo(
             f"  Incomplete: {len(remaining):,} message(s) not stored yet. "
-            "Re-run ingest --full after rate limits cool down."
+            "Re-run ingest (or ingest --full) after rate limits cool down."
         )
     return stats
 
@@ -232,6 +232,66 @@ def _incremental_sync(
     return stats
 
 
+def _backfill_missing(
+    service, db: Database, cfg: AppConfig, stats: IngestStats
+) -> IngestStats:
+    """Fetch listed mailbox IDs that never made it into SQLite."""
+    ic = cfg.ingest
+    message_ids = list(
+        iter_message_ids(
+            service,
+            page_size=ic.page_size,
+            include_spam_trash=ic.include_spam_trash,
+            max_messages=ic.max_messages,
+        )
+    )
+    pending = [mid for mid in message_ids if not db.message_exists(mid)]
+    if not pending:
+        stats.complete = True
+        return stats
+
+    typer.echo(
+        f"  Backfilling {len(pending):,} listed message(s) missing from local DB "
+        f"(of {len(message_ids):,} listed) …"
+    )
+    for msg in batch_get_messages(
+        service,
+        pending,
+        batch_size=ic.batch_size,
+        batch_pause_s=ic.batch_pause_s,
+        max_retries=ic.max_retries,
+    ):
+        stats.fetched += 1
+        label = label_for_message(msg["labelIds"], promotions_as=ic.promotions_as)
+        if label is None:
+            stats.skipped += 1
+            continue
+        inserted = db.upsert_message(
+            message_id=msg["id"],
+            thread_id=msg["threadId"],
+            internal_date=msg["internalDate"],
+            history_id=msg.get("historyId"),
+            raw_rfc822=msg["raw_bytes"],
+            label_ids=msg["labelIds"],
+            from_header=msg.get("from_header"),
+            subject=msg.get("subject"),
+        )
+        if inserted:
+            stats.inserted += 1
+        else:
+            stats.updated += 1
+        _label_counts(label, stats)
+
+    remaining = [mid for mid in message_ids if not db.message_exists(mid)]
+    stats.complete = len(remaining) == 0
+    if remaining:
+        typer.echo(
+            f"  Incomplete: {len(remaining):,} message(s) not stored yet. "
+            "Re-run ingest after rate limits cool down."
+        )
+    return stats
+
+
 # ─── public entry point ───────────────────────────────────────────────────────
 
 
@@ -267,6 +327,9 @@ def run_ingest(cfg: AppConfig, force_full: bool = False) -> IngestStats:
             stats = _full_fetch(service, db, cfg)
         else:
             stats = _incremental_sync(service, db, cfg, saved_history_id)
+            # History only sees mail after historyId. A partial first fetch
+            # leaves older messages invisible to incremental sync — backfill them.
+            stats = _backfill_missing(service, db, cfg, stats)
 
         # Only advance historyId when this run actually finished.
         # An incomplete full fetch must not skip remaining older mail.

@@ -35,7 +35,7 @@ ingest:
   max_retries: 6
   # Safety cap: stop after ingesting this many messages in a single run.
   # Set to null to disable.
-  max_messages: null
+  max_messages: 2000
   # What to do with messages that have CATEGORY_PROMOTIONS but not SPAM.
   # "ignore"       → skip these messages entirely
   # "promotional"  → ingest, ground-truth label = promotional
