@@ -75,6 +75,14 @@ Output is counts only — no subjects or email addresses are printed.
 Ingested  1,247 messages  (312 spam, 935 ham)  historyId=3048291
 ```
 
+### Serve the API  *(Stage 4)*
+
+```sh
+# POST /classify  and  GET /metrics
+email-classifier serve
+# or: uv run uvicorn email_classifier.api.app:app --host 127.0.0.1 --port 8000
+```
+
 ### Classify a single message
 
 ```sh
@@ -122,9 +130,13 @@ Never trashes, moves, or deletes messages. Uncertain verdicts are never labeled.
 
 ---
 
-## Observability stack  *(Stage 4)*
+## Observability stack
 
 ```sh
+# API (metrics + classify) on the host
+email-classifier serve
+
+# Then, from another terminal:
 cd deploy
 docker compose up -d
 ```
@@ -170,7 +182,7 @@ email_classifier/
 ├── jev/          State builder (questions + TypeSafeClient in Stage 3)
 ├── decide/       Threshold logic, decision_path  (Stage 3)
 ├── models/       Pydantic output contract  (Stage 3)
-├── observability/ OTel, Prometheus, structlog  (Stage 4)
+├── observability/ OTel traces, Prometheus metrics, structlog JSON
 ├── eval/         Precision/recall, calibration  (Stage 5)
 ├── api/          FastAPI endpoints  (Stage 3)
 └── cli/          Typer CLI

@@ -1,0 +1,180 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "title": "p50 / p95 / p99 total latency",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "s" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(classifier_stage_duration_seconds_bucket{stage=\"total\"}[5m])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(classifier_stage_duration_seconds_bucket{stage=\"total\"}[5m])) by (le))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(classifier_stage_duration_seconds_bucket{stage=\"total\"}[5m])) by (le))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "p50 / p95 / p99 Jev latency",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "s" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(classifier_stage_duration_seconds_bucket{stage=\"jev_call\"}[5m])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(classifier_stage_duration_seconds_bucket{stage=\"jev_call\"}[5m])) by (le))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(classifier_stage_duration_seconds_bucket{stage=\"jev_call\"}[5m])) by (le))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Throughput",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "ops" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(classifier_classifications_total[5m])",
+          "legendFormat": "classifications/s"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Category mix",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(classifier_category_total[5m])) by (category)",
+          "legendFormat": "{{category}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Spam / uncertain rates",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(classifier_spam_total[5m]) / clamp_min(rate(classifier_classifications_total[5m]), 1e-9)",
+          "legendFormat": "spam"
+        },
+        {
+          "expr": "rate(classifier_uncertain_total[5m]) / clamp_min(rate(classifier_classifications_total[5m]), 1e-9)",
+          "legendFormat": "uncertain"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Errors / 429s / retries",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "rate(classifier_errors_total[5m])",
+          "legendFormat": "errors"
+        },
+        {
+          "expr": "rate(classifier_rate_limited_total[5m])",
+          "legendFormat": "429s"
+        },
+        {
+          "expr": "rate(classifier_retries_total[5m])",
+          "legendFormat": "retries"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Cost (USD)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "currencyUSD" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(classifier_cost_usd_total[5m])",
+          "legendFormat": "USD/s"
+        },
+        {
+          "expr": "increase(classifier_cost_usd_total[1h])",
+          "legendFormat": "USD last hour"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Confidence / spam probability",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(classifier_confidence_bucket[5m])) by (le))",
+          "legendFormat": "confidence p50"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(classifier_spam_probability_bucket[5m])) by (le))",
+          "legendFormat": "spam_probability p50"
+        }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["email-classifier"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Email Classifier",
+  "uid": "email-classifier",
+  "version": 1
+}

@@ -16,6 +16,27 @@ import pytest
 
 from email_classifier.config import AppConfig, GmailConfig, IngestConfig
 from email_classifier.ingest.db import Database
+from email_classifier.observability import setup_observability
+
+
+# ─── observability (in-memory spans; must install TracerProvider first) ───────
+
+
+@pytest.fixture(scope="session", autouse=True)
+def otel_exporter():
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+
+    exporter = InMemorySpanExporter()
+    setup_observability(exporter=exporter)
+    return exporter
+
+
+@pytest.fixture(autouse=True)
+def _clear_spans(otel_exporter):
+    otel_exporter.clear()
+    yield otel_exporter
 
 
 # ─── temp directories ─────────────────────────────────────────────────────────

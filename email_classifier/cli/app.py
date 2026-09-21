@@ -61,6 +61,30 @@ def classify(
         typer.echo(format_compact(result))
 
 
+# ─── serve  (Stage 4) ─────────────────────────────────────────────────────────
+
+
+@app.command()
+def serve(
+    host: Annotated[str, typer.Option(help="Bind address.")] = "127.0.0.1",
+    port: Annotated[int, typer.Option(help="Bind port.")] = 8000,
+    config: Annotated[
+        str,
+        typer.Option("--config", help="Path to config.yaml.", envvar="CLASSIFIER_CONFIG"),
+    ] = "config.yaml",
+) -> None:
+    """Run the FastAPI app (POST /classify, GET /metrics)."""
+    import os
+
+    import uvicorn
+
+    from email_classifier.observability import setup_observability
+
+    os.environ.setdefault("CLASSIFIER_CONFIG", config)
+    setup_observability()
+    uvicorn.run("email_classifier.api.app:app", host=host, port=port)
+
+
 # ─── evaluate  (Stage 5) ──────────────────────────────────────────────────────
 
 

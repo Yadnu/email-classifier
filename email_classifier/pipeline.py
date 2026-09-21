@@ -20,6 +20,14 @@ from email_classifier.models.result import (
     Signals,
     ThresholdsApplied,
 )
+from email_classifier.observability import (
+    current_trace_id,
+    get_tracer,
+    log_classification,
+    record_classification,
+    set_safe_span_attributes,
+    setup_observability,
+)
 from email_classifier.parse.mime import parse_raw
 
 CATEGORY_KEYS = ("spam", "phishing", "promotional", "legitimate", "other")
@@ -183,6 +191,28 @@ def build_result(
     )
 
 
+def _observability_attrs(result: ClassificationResult) -> dict[str, Any]:
+    obs = result.observability
+    thr = obs.thresholds_applied
+    return {
+        "request_id": obs.request_id,
+        "trace_id": obs.trace_id,
+        "model_version": obs.model_version,
+        "input_tokens": obs.input_tokens,
+        "input_tokens_estimated": obs.input_tokens_estimated,
+        "cost_usd": obs.cost_usd,
+        "state_size_chars": obs.state_size_chars,
+        "body_truncated": obs.body_truncated,
+        "retries": obs.retries,
+        "rate_limited": obs.rate_limited,
+        "decision_path": obs.decision_path,
+        "timestamp": obs.timestamp,
+        "threshold_spam": thr.spam,
+        "threshold_phishing": thr.phishing,
+        "threshold_uncertain_floor": thr.uncertain_floor,
+    }
+
+
 def classify_message(
     message_id: str,
     cfg: AppConfig,
@@ -194,6 +224,8 @@ def classify_message(
 ) -> ClassificationResult:
     """Classify one message. ``jev_client`` is injected in tests."""
     load_dotenv()
+    setup_observability()
+    tracer = get_tracer()
     wall = time.perf_counter()
     request_id = str(uuid.uuid4())
     owns_db = db is None
@@ -202,74 +234,92 @@ def classify_message(
         db.open()
 
     try:
-        raw, gmail_ms = _fetch_raw(message_id, cfg, db, gmail_service)
+        with tracer.start_as_current_span("classify") as root:
+            with tracer.start_as_current_span("gmail_fetch"):
+                raw, gmail_ms = _fetch_raw(message_id, cfg, db, gmail_service)
 
-        t0 = time.perf_counter()
-        parsed = parse_raw(raw)
-        parse_ms = _ms(t0)
+            with tracer.start_as_current_span("parse"):
+                t0 = time.perf_counter()
+                parsed = parse_raw(raw)
+                parse_ms = _ms(t0)
 
-        t0 = time.perf_counter()
-        built = build_state(parsed, cfg.jev.body_excerpt_chars)
-        state_ms = _ms(t0)
+            with tracer.start_as_current_span("state_build"):
+                t0 = time.perf_counter()
+                built = build_state(parsed, cfg.jev.body_excerpt_chars)
+                state_ms = _ms(t0)
 
-        owns_client = jev_client is None
-        if jev_client is None:
-            jev_client = JevClient(model=cfg.jev.model)
+            owns_client = jev_client is None
+            if jev_client is None:
+                jev_client = JevClient(model=cfg.jev.model)
 
-        error_path: Optional[str] = None
-        try:
-            t0 = time.perf_counter()
-            answers = jev_client.classify_state(built.state.to_payload())
-            jev_ms = answers.elapsed_ms if answers.elapsed_ms else _ms(t0)
-        except Exception:
-            jev_ms = _ms(t0)
-            retries = getattr(getattr(jev_client, "_counter", None), "retries", 0)
-            rate_limited = getattr(
-                getattr(jev_client, "_counter", None), "rate_limited", False
-            )
-            answers = _error_answers(jev_ms, retries, rate_limited)
-            error_path = "jev_error"
-        finally:
-            if owns_client:
-                jev_client.close()
+            error_path: Optional[str] = None
+            try:
+                with tracer.start_as_current_span("jev_call"):
+                    t0 = time.perf_counter()
+                    answers = jev_client.classify_state(built.state.to_payload())
+                    jev_ms = answers.elapsed_ms if answers.elapsed_ms else _ms(t0)
+            except Exception:
+                jev_ms = _ms(t0)
+                retries = getattr(getattr(jev_client, "_counter", None), "retries", 0)
+                rate_limited = getattr(
+                    getattr(jev_client, "_counter", None), "rate_limited", False
+                )
+                answers = _error_answers(jev_ms, retries, rate_limited)
+                error_path = "jev_error"
+            finally:
+                if owns_client:
+                    jev_client.close()
 
-        t0 = time.perf_counter()
-        timings = _timings(
-            total=_ms(wall),
-            gmail_fetch=gmail_ms,
-            parse=parse_ms,
-            state_build=state_ms,
-            jev_call=jev_ms,
-            decision=0,
-        )
-        result = build_result(
-            message_id,
-            answers,
-            built,
-            cfg,
-            timings,
-            request_id=request_id,
-            decision_path_override=error_path,
-        )
-        decision_ms = _ms(t0)
-        result = result.model_copy(
-            update={
-                "classification_time_ms": _timings(
+            with tracer.start_as_current_span("decision"):
+                t0 = time.perf_counter()
+                timings = _timings(
                     total=_ms(wall),
                     gmail_fetch=gmail_ms,
                     parse=parse_ms,
                     state_build=state_ms,
                     jev_call=jev_ms,
-                    decision=decision_ms,
+                    decision=0,
                 )
-            }
-        )
+                result = build_result(
+                    message_id,
+                    answers,
+                    built,
+                    cfg,
+                    timings,
+                    request_id=request_id,
+                    decision_path_override=error_path,
+                )
+                decision_ms = _ms(t0)
 
-        if persist:
-            db.save_classification(
-                message_id, result.model_dump_json()
+            result = result.model_copy(
+                update={
+                    "classification_time_ms": _timings(
+                        total=_ms(wall),
+                        gmail_fetch=gmail_ms,
+                        parse=parse_ms,
+                        state_build=state_ms,
+                        jev_call=jev_ms,
+                        decision=decision_ms,
+                    )
+                }
             )
-        return result
+            tid = current_trace_id()
+            if tid:
+                result = result.model_copy(
+                    update={
+                        "observability": result.observability.model_copy(
+                            update={"trace_id": tid}
+                        )
+                    }
+                )
+
+            set_safe_span_attributes(root, _observability_attrs(result))
+            record_classification(result)
+            log_classification(result)
+
+            if persist:
+                db.save_classification(message_id, result.model_dump_json())
+            return result
     finally:
         if owns_db:
             db.close()

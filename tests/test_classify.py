@@ -156,13 +156,13 @@ class TestCli:
         json_out = runner.invoke(
             cli_app, ["classify", "msg1", "--json", "--config", "config.yaml"]
         )
-        assert json_out.exit_code == 0, json_out.output
-        ClassificationResult.model_validate_json(json_out.output)
+        assert json_out.exit_code == 0, json_out.stdout
+        ClassificationResult.model_validate_json(json_out.stdout)
 
         compact = runner.invoke(cli_app, ["classify", "msg1", "--config", "config.yaml"])
-        assert compact.exit_code == 0, compact.output
-        assert "model=jev-1.13.0" in compact.output
-        assert "category=" in compact.output
+        assert compact.exit_code == 0, compact.stdout
+        assert "model=jev-1.13.0" in compact.stdout
+        assert "category=" in compact.stdout
 
 
 class TestApi:

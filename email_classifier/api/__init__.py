@@ -1,4 +1,4 @@
-"""FastAPI application with /classify (metrics land in Stage 4)."""
+"""FastAPI application with /classify and /metrics endpoints."""
 
 from email_classifier.api.app import app as fastapi_app
 
