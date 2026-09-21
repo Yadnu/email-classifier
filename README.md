@@ -101,7 +101,18 @@ Seed fake rows so the GUI can be built without real mail (ids are `seed-0000` â€
 uv run python scripts/seed_classifications.py --count 80
 ```
 
-The Next.js GUI is not in this stage. Point it at `http://127.0.0.1:8000` when it lands. CORS allows `http://127.0.0.1:3000`.
+The Next.js GUI (list + detail) lives in `web/`. Keep the API on 127.0.0.1:8000.
+
+```sh
+uv run python scripts/seed_classifications.py --count 80
+uv run email-classifier serve
+# other terminal:
+cd web
+npm install
+npm run dev
+```
+
+Open http://127.0.0.1:3000 â€” message list, click a row for waterfall + Jev question cards.
 
 ### Classify a single message
 
